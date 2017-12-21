@@ -9,6 +9,7 @@ import logging
 import asyncio
 import pathlib
 import traceback
+import validators
 
 import aiohttp
 import discord
@@ -57,6 +58,9 @@ class MusicBot(discord.Client):
         self.init_ok = False
         self.cached_app_info = None
         self.last_status = None
+        self.start_time = 0
+        self.autoplaylist_removed_filename = "autoplaylist_removed.txt"
+        self.autoplaylist_added_filename = "autoplaylist_added.txt"        
 
         self.config = Config(config_file)
         self.permissions = Permissions(perms_file, grant_all=[self.config.owner_id])
@@ -1803,6 +1807,96 @@ class MusicBot(discord.Client):
 
         else:
             raise exceptions.CommandError('Player is not paused.', expire_in=30)
+
+    def changes_in_autoplaylist(self, filename, reason):
+        fi = open("config/" + filename, 'a')
+        fi.write(reason)
+        fi.close()
+
+    def reload_playlist_entries(self):
+        """
+        reload_playlist_entries.
+        """
+
+        self.autoplaylist = load_file(self.config.auto_playlist_file)
+        self.song_list = self.autoplaylist[:]
+        if not self.autoplaylist:
+            print("Autoplaylist is empty, disabling.")
+            self.config.auto_playlist = False
+        else:
+            print("Loaded autoplaylist with {} entries".format(len(self.autoplaylist)))
+
+    async def cmd_add(self, song_url, message):
+        """
+        Usage:
+            {command_prefix}add song_link
+        Add song to autoplaylist.
+        """
+
+        found = 0
+        song_url = song_url.strip('<>')
+        if validators.url(song_url):
+            f = open(self.config.auto_playlist_file, 'r')
+            lines = f.readlines()
+            for line in lines:
+                if line == song_url + "\n":
+                    found += 1
+            f.close()
+            
+            if found>0:
+                return Response('Song is already in autoplaylist.', delete_after=20)
+            else:
+                fi = open(self.config.auto_playlist_file, 'a')
+                fi.write(song_url+"\n")
+                fi.close()
+                self.reload_playlist_entries()
+                ctime=time.ctime()
+                url=song_url
+                sep='#' *32
+                reason = (
+                    '# Entry added ' + ctime + '\n' +
+                    '# Reason: Added by USER: ' + str(message.author) + '\n' +
+                    url + '\n\n' + sep + '\n\n')
+                self.changes_in_autoplaylist(self.autoplaylist_added_filename, reason)
+                return Response('Song added to autoplaylist.', delete_after=20)
+        else:
+            return Response('URL is not valid.', delete_after=20)      
+
+    async def cmd_del(self, song_url, message):
+        """
+        Usage:
+            {command_prefix}del song_link
+        Remove song from autoplaylist.
+        """
+
+        found = 0
+        song_url = song_url.strip('<>')
+        if validators.url(song_url):
+            f = open(self.config.auto_playlist_file, 'r')
+            lines = f.readlines()
+            f.close()
+            f = open(self.config.auto_playlist_file, 'w')
+            for line in lines:
+              if line!=song_url+"\n":
+                f.write(line)
+              else:
+                found += 1
+            f.close()
+            if found>0:
+              self.reload_playlist_entries()
+              ctime=time.ctime()
+              url=song_url
+              sep='#' *32
+              reason = (
+                    '# Entry removed ' + ctime + '\n' +
+                    '# Reason: Removed by USER: ' + str(message.author) + '\n' +
+                    url + '\n\n' + sep + '\n\n')
+              self.changes_in_autoplaylist(self.autoplaylist_removed_filename, reason)
+              return Response('Song removed from autoplaylist.', delete_after=20)
+            else:
+              return Response('Song was not found in autoplaylist.', delete_after=20)
+        else:
+            return Response('URL is not valid.', delete_after=20)
 
     async def cmd_shuffle(self, channel, player):
         """
