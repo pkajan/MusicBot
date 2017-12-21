@@ -58,7 +58,6 @@ class MusicBot(discord.Client):
         self.init_ok = False
         self.cached_app_info = None
         self.last_status = None
-        self.start_time = 0
         self.autoplaylist_removed_filename = "autoplaylist_removed.txt"
         self.autoplaylist_added_filename = "autoplaylist_added.txt"        
 
